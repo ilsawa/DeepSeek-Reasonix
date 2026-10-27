@@ -73,6 +73,8 @@ nsis:
   # zip writes one regardless, which canonical-artifact-names.js deletes —
   # refused at the source here, swept there.
   differentialPackage: false
+  # Closes a running Studio, and says what to do when it cannot.
+  include: build/installer.nsh
   # studio-manifest reads the installer channel off this exact suffix.
   artifactName: ReasonixStudio-windows-${arch}-installer.${ext}
 

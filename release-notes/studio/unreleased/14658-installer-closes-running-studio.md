@@ -1,0 +1,2 @@
+- 改进：安装升级时 Studio 还在运行，安装程序会连同内核一起关掉，必要时请求一次管理员权限；仍关不掉就用中文说明怎么退出。修复 #14658。
+- Changed: during install or upgrade the installer closes a running Studio with its kernel, asks once for administrator permission if needed, and says how to quit by hand. Fixes #14658.
