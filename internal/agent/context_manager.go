@@ -213,7 +213,11 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 	ladder := newSummaryLadder(maxSummaries)
 	result := prepared
 	for ladder.next() {
-		mustFree := policy.Trigger == CompactionTriggerOverflow || hard > 0 && result.InputTokens >= hard
+		// Pressure at the fold line pauses this turn inside Prepare: older rounds
+		// of the live turn are folded, then the same sampling request continues.
+		// Chunked fallback stays manual-only.
+		mustFree := policy.Trigger == CompactionTriggerOverflow || hard > 0 && result.InputTokens >= hard ||
+			(policy.Trigger == CompactionTriggerPressure && result.InputTokens >= fold)
 		outcome, err := a.compactToProjectionLocked(ctx, policy.Trigger, policy.Instructions,
 			ladder.request(forceFold, mustFree, policy.AllowChunkedFallback))
 		if err != nil {

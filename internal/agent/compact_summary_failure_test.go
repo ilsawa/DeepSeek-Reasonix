@@ -225,6 +225,39 @@ func TestPressureBelowHardCeilingKeepsTheFailure(t *testing.T) {
 	}
 }
 
+// A long live turn used to stay verbatim until the hard ceiling, so pressure
+// returned immediately and the model call continued on the full view. At the
+// fold line the turn now waits for the summary, then the same sampling request
+// continues.
+func TestPressurePausesToFoldTheActiveTurnThenContinues(t *testing.T) {
+	sess := foldableSessionOverForce(6)
+	const turnAt int64 = 42
+	sess.Messages[1].CreatedAt = turnAt
+	a := agentOverForce(t, &fakeProvider{reply: "standing facts kept"}, sess)
+	a.activeTurnCreatedAt.Store(turnAt)
+	est, fold, hard := a.estimatedPromptTokens(sess.Messages), a.compactTrigger(), a.hardInputCeiling()
+	if est < fold || est >= hard {
+		t.Fatalf("fixture est=%d, want %d <= est < %d", est, fold, hard)
+	}
+	if region := foldRegionOf(a); len(region) != 0 {
+		t.Fatalf("unsplit active turn still has a fold of %d messages", len(region))
+	}
+
+	prepared, err := a.prepareSamplingRequest(context.Background())
+	if err != nil {
+		t.Fatalf("sampling after pressure compact: %v", err)
+	}
+	if a.currentProjectionVersion() == 0 {
+		t.Fatal("pressure left the active turn verbatim")
+	}
+	if !strings.Contains(latestDigest(a.sess.compactionState.Projection.Messages), "standing facts kept") {
+		t.Fatalf("digest = %q", latestDigest(a.sess.compactionState.Projection.Messages))
+	}
+	if len(prepared.req.Messages) == 0 {
+		t.Fatal("turn did not continue into a model request")
+	}
+}
+
 // The receipt recorded below the ceiling must not outlive the ceiling itself:
 // once growing usage crosses the hard ceiling the fold is the only way out, so
 // recovery has to run even with a standing failed receipt. If the summarizer is
