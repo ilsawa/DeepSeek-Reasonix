@@ -1,0 +1,2 @@
+- 修复：历史超过读取上限的会话不再只报英文错误，会说明文件完好，并可「从最近的内容继续」另存为新会话。修复 #14660。
+- Fixed: a session over the read limit no longer stops at an English error; the file stays intact and "Continue from the most recent part" saves its newest part as a new session. Fixes #14660.

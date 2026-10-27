@@ -296,6 +296,7 @@ export const ACTIONS: UIAction[] = [
   { id: "toast.report", kind: "view", target: "none", proof: "interaction" },
   { id: "errbar.report", kind: "view", target: "none", proof: "interaction" },
   { id: "toast.dismiss", kind: "view", target: "entity", proof: "interaction" },
+  { id: "toast.act", kind: "kernel-mutation", target: "entity", proof: "interaction" },
   { id: "model.group", kind: "view", target: "entity", proof: "interaction" },
   { id: "model.group-clear", kind: "view", target: "none", proof: "interaction" },
   { id: "paste.save", kind: "kernel-mutation", target: "none", proof: "interaction" },

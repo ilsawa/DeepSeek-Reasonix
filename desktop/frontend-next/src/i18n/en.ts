@@ -577,6 +577,9 @@ export const EN: Record<string, string> = {
 
   // ── 会话树 ───────────────────────────────────────────────────────
   "新会话": "New session",
+  "这个会话的历史超过了安全读取上限，没有打开（文件完好，未改动）。可以只取最近的内容，另存为新会话继续。": "This session's history is over the safe read limit, so it was not opened (the file is intact and unchanged). You can carry only its most recent part over into a new session.",
+  "从最近的内容继续": "Continue from the most recent part",
+  "已从最近的内容另存为新会话，较早的 {n} 条没有带入；原会话文件保持不变。": "Saved the most recent part as a new session; {n} earlier messages were not carried over. The original session file is unchanged.",
   "标签数已到上限 {n}，已把「{title}」从标签栏收起，对话仍在列表里。": "The open-session limit ({n}) was reached, so \"{title}\" was folded out of the tab bar. The conversation is still in the list.",
   "打开项目文件夹": "Open project folder",
   "新会话 {n}": "New session {n}",

@@ -416,6 +416,10 @@ export class MockPort extends MockWorkspace implements AgentPort {
     return `/mock/branch-${turn}.jsonl`;
   }
 
+  async continueFromTail(path: string): Promise<{ path: string; dropped: number }> {
+    return { path: path.replace(/\.jsonl$/, "-tail.jsonl"), dropped: 12 };
+  }
+
   // The second prompt onwards is scripted to have run bash, so mock mode can
   // show the consent stage the real kernel demands on partial coverage.
   async prepareRewind(turn: number, scope: RewindScope): Promise<RewindPlan> {
