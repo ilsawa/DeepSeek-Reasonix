@@ -2512,7 +2512,7 @@
     background: var(--overlay); font-weight: var(--w-med);
   }
   .prefs-nav button[aria-selected="true"] svg { color: var(--text) }
-  .prefs-nav button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px }
+  .prefs-nav button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px } .prefs-nav button[data-open] { font-weight: var(--w-med) } .prefs-nav button.prefs-page { min-height: 30px; padding-left: 34px }
 
   .prefs-nav .nv {
     flex: 0 99 auto; min-width: 0; max-width: 74px; overflow: hidden; text-overflow: ellipsis;
@@ -2636,19 +2636,10 @@
   @media (max-width: 760px) {
     .prefs { padding: 12px }
     .prefs-sheet { height: 100%; border-radius: var(--r-md) }
-    .prefs-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) }
-    .prefs-nav {
-      display: flex; gap: 4px; padding: 8px 10px; overflow-x: auto; overflow-y: hidden;
-      border-right: 0; border-bottom: 1px solid var(--hair); scrollbar-width: none;
-    }
-    .prefs-nav::-webkit-scrollbar { display: none }
+    .prefs-body { grid-template-columns: 148px minmax(0, 1fr) }
+    .prefs-nav { padding: 10px 6px }
     .prefs-nav .navsec, .prefs-nav .nv { display: none }
-    .prefs-nav button { flex: none; min-height: 32px; padding: 6px 10px }
-    .prefs-nav button::before {
-      left: 50%; top: auto; bottom: 0; width: 0; height: 2px;
-      transform: translateX(-50%); transition: width var(--t-card) var(--ease-spring);
-    }
-    .prefs-nav button[aria-selected="true"]::before { width: 18px; height: 2px }
+    .prefs-nav button.prefs-page { padding-left: 26px }
     .prefs-main { --main-pad-b: 48px; padding: 24px 22px var(--main-pad-b) }
   }
 

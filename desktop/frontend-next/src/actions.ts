@@ -593,6 +593,7 @@ export const ACTIONS: UIAction[] = [
   { id: "appearance.effects", kind: "view", target: "none", proof: "browser" },
   { id: "pane.close", kind: "destructive", target: "none", proof: "authority-effect" },
   { id: "settings.section", kind: "navigation", target: "none", proof: "interaction" },
+  { id: "settings.page", kind: "navigation", target: "none", proof: "interaction" },
   // Finding a setting changes what is on screen and nothing else: it reaches
   // no kernel state, and the jump it offers is settings.section, because
   // arriving from a search is the same arrival as arriving from the nav.

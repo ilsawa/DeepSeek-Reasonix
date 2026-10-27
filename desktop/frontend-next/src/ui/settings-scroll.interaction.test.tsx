@@ -35,7 +35,7 @@ it.each([
 
 it("starts a keyboard-selected category at the top and keeps focus on its tab", async () => {
   draw("tools");
-  const current = screen.getByRole("tab", { name: /^工具与权限/ });
+  const current = screen.getByRole("tab", { name: /子代理与协作/ });
   current.focus();
   screen.getByRole("tabpanel").scrollTop = 1600;
   await userEvent.keyboard("{ArrowDown}");

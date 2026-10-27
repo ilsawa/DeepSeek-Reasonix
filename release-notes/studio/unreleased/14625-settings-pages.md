@@ -1,0 +1,2 @@
+- 改进：设置里较长的“工具与权限”和“外观”拆成几个子页，在左侧导航里直接点选；从搜索或链接跳到某个设置时会自动切到它所在的子页。关联 #14625。
+- Changed: the long Tools & permissions and Appearance sections in Settings are split into pages in the left navigation; search and links open the page a setting is on. Refs #14625.

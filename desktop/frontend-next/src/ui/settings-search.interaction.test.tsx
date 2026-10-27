@@ -54,7 +54,7 @@ describe("finding a setting", () => {
     expect(block("present-files")?.previousElementSibling?.getAttribute("data-setting")).toBe("approval");
     expect((await screen.findByRole("switch", { name: "启用 AI 文件交付卡片" })).getAttribute("aria-checked")).toBe("false");
     expect(block("present-files")?.querySelector("[data-apply]")?.getAttribute("data-apply")).toBe("on-open");
-    expect(screen.getByRole("switch", { name: "启用内置浏览器" })).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "启用内置浏览器" })).toBeNull();
   });
   it("finds the mode picker visibility switch on the persona management page", async () => {
     const { find, block } = draw();
