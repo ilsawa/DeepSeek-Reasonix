@@ -1,6 +1,9 @@
 package boot
 
 import (
+	"os"
+	"strings"
+
 	"reasonix/internal/agentpreset"
 	"reasonix/internal/tool"
 )
@@ -115,8 +118,16 @@ func UnifiedProviderToolNames() []string {
 // applyUnifiedProviderToolSurface restricts Schemas/ContractEntries to the
 // shared core + host-control tools. use_capability can still Get every
 // registered tool, including those hidden from the provider schema.
+//
+// REASONIX_DIRECT_MCP=1 is the Zerde/Iskin shell: the model calls mcp__*
+// tools by name, the same names Claude Code puts in the schema. The proxy
+// tool stays registered for the host and is not offered to the model.
 func applyUnifiedProviderToolSurface(reg *tool.Registry) {
 	if reg == nil {
+		return
+	}
+	if os.Getenv("REASONIX_DIRECT_MCP") == "1" {
+		applyDirectMCPProviderToolSurface(reg)
 		return
 	}
 	allow := make([]string, 0, 16)
@@ -132,6 +143,34 @@ func applyUnifiedProviderToolSurface(reg *tool.Registry) {
 		if _, ok := reg.Get("use_capability"); ok {
 			allow = []string{"use_capability"}
 		}
+	}
+	reg.SetProviderVisibleTools(allow)
+}
+
+func applyDirectMCPProviderToolSurface(reg *tool.Registry) {
+	allow := make([]string, 0, 32)
+	seen := make(map[string]bool, 32)
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			return
+		}
+		if _, ok := reg.Get(name); !ok {
+			return
+		}
+		seen[name] = true
+		allow = append(allow, name)
+	}
+	for _, name := range []string{"bash", "pwsh", "read_file", "edit_file", "write_file", "send_message"} {
+		add(name)
+	}
+	for _, name := range reg.Names() {
+		if strings.HasPrefix(name, "mcp__") {
+			add(name)
+		}
+	}
+	if len(allow) == 0 {
+		add("use_capability")
 	}
 	reg.SetProviderVisibleTools(allow)
 }

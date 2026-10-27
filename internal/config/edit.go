@@ -220,8 +220,10 @@ func (c *Config) SetReasoningLanguage(lang string) error {
 		c.Agent.ReasoningLanguage = "zh"
 	case "en", "english":
 		c.Agent.ReasoningLanguage = "en"
+	case "ru", "russian", "рус", "русский":
+		c.Agent.ReasoningLanguage = "ru"
 	default:
-		return fmt.Errorf("reasoning language %q: must be auto|zh|en", lang)
+		return fmt.Errorf("reasoning language %q: must be auto|zh|en|ru", lang)
 	}
 	return nil
 }

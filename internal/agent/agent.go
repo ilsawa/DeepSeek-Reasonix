@@ -297,7 +297,7 @@ type Agent struct {
 	// sessionstate.go.
 	sess              sessionRuntime
 	responseLanguage  atomic.Value // string: auto|zh|en
-	reasoningLanguage atomic.Value // string: auto|zh|en
+	reasoningLanguage atomic.Value // string: auto|zh|en|ru
 
 	continuationPolicy ContinuationPolicy
 

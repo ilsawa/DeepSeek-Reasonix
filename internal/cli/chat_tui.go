@@ -49,7 +49,8 @@ import (
 type chatTUI struct {
 	turnSettingsIntent *controllerTurnIntent
 	ctrl               control.SessionAPI
-	shutdownErr        error // final save's failure; reported after terminal release
+	wakeSlot           *wakeSlot // shared with the wake socket; nil when the process is not listening
+	shutdownErr        error     // final save's failure; reported after terminal release
 	label              string
 	missing            string // missing-key warning surfaced once in the banner, "" when ready
 	webHandoffState
@@ -311,7 +312,10 @@ type chatTUI struct {
 	pendingPastes  []string
 	bubbleStartIdx int
 	bubblePending  bool
-	turnDiscarded  bool
+	// echoedUser is the line already drawn for this turn. The controller emits
+	// the same text again after the first packet has confirmed the bubble.
+	echoedUser    string
+	turnDiscarded bool
 
 	// pendingApproval holds the tool-call approval currently shown in the banner
 	// (nil when none). While set, the controller's run goroutine is blocked
@@ -1831,6 +1835,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.commitTranscriptSource(transcriptSource{
 					kind: transcriptSourceUser, raw: line, planMode: m.planMode,
 				})
+				m.echoedUser = strings.TrimSpace(line)
 				m.bubblePending = true
 				m.turnDiscarded = false
 				m.confirmBubbleSent() // shell events arrive instantly
@@ -4038,6 +4043,7 @@ func (m *chatTUI) unsendPending() {
 	m.transcriptDirty = true
 	m.bubblePending = false
 	m.pendingRestore = ""
+	m.echoedUser = ""
 	m.pendingPastes = nil
 	m.turnDiscarded = true
 	m.ctrl.Cancel()
@@ -4408,6 +4414,7 @@ func (m *chatTUI) runExportCommand(input string) {
 	var b strings.Builder
 	b.WriteString("# reasonix session\n\n")
 	lastRole := provider.Role("")
+	lastIncoming := false
 	exportedMessages := 0
 	for _, msg := range cliHistoryWithoutPinnedContextRevisions(msgs) {
 		switch msg.Role {
@@ -4420,13 +4427,17 @@ func (m *chatTUI) runExportCommand(input string) {
 			if content == "" {
 				continue
 			}
-			if lastRole != provider.RoleUser {
+			incoming := strings.HasPrefix(content, "Входящее письмо, отправитель ")
+			if incoming {
+				b.WriteString("## Incoming\n\n")
+			} else if lastRole != provider.RoleUser || lastIncoming {
 				b.WriteString("## User\n\n")
 			}
 			b.WriteString(content)
 			b.WriteString("\n\n")
 			exportedMessages++
 			lastRole = provider.RoleUser
+			lastIncoming = incoming
 		case provider.RoleAssistant:
 			content := strings.TrimSpace(msg.Content)
 			if content == "" {
@@ -4746,6 +4757,10 @@ func replaySectionsForWithRenderers(
 				continue
 			}
 			content := control.StripComposePrefixes(agent.UserMessageText(m))
+			if sender, body, ok := wakeIncomingParts(content); ok {
+				out = append(out, renderIncomingLetter(sender, body, width)+"\n\n")
+				continue
+			}
 			out = append(out, renderUserBubble(content, width, false)+"\n\n")
 		case provider.RoleAssistant:
 			if reasoning := strings.TrimSpace(m.ReasoningContent); reasoning != "" {
@@ -4790,6 +4805,18 @@ func wrapForViewport(text string, width int, fg cliColor) string {
 // renderUserBubble renders the just-submitted prompt as a transcript line. Keep
 // it visually lighter than the real bottom composer so a fresh session does not
 // look like it has a second input box in the transcript.
+func renderIncomingLetter(sender, body string, width int) string {
+	_ = width
+	if strings.TrimSpace(sender) == "" {
+		sender = "входящее"
+	}
+	line := "← " + sender + ": " + body
+	if !colorOn() {
+		return "│ " + line
+	}
+	return "  " + yellow(line)
+}
+
 func renderUserBubble(line string, width int, planMode bool) string {
 	line = displayLineForImageRefs(line)
 	prefix := "› "

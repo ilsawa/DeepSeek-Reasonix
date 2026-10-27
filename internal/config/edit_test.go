@@ -589,6 +589,12 @@ func TestSetReasoningLanguage(t *testing.T) {
 	if c.Agent.ReasoningLanguage != "" || c.ReasoningLanguage() != "auto" {
 		t.Fatalf("reasoning language = %q/%q, want empty/auto", c.Agent.ReasoningLanguage, c.ReasoningLanguage())
 	}
+	if err := c.SetReasoningLanguage("ru"); err != nil {
+		t.Fatalf("SetReasoningLanguage ru: %v", err)
+	}
+	if c.Agent.ReasoningLanguage != "ru" || c.ReasoningLanguage() != "ru" {
+		t.Fatalf("reasoning language = %q/%q, want ru", c.Agent.ReasoningLanguage, c.ReasoningLanguage())
+	}
 	if err := c.SetReasoningLanguage("klingon"); err == nil {
 		t.Fatal("SetReasoningLanguage should reject unknown values")
 	}

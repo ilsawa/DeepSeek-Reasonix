@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"reasonix/internal/control"
 	"reasonix/internal/event"
 	"reasonix/internal/i18n"
 	"strings"
@@ -59,6 +60,8 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		m.ingestMCPSurfaceReady(e)
 	case event.TurnDone:
 		m.ingestTurnDone(e)
+	case event.UserMessage:
+		m.ingestControllerUser(e)
 	}
 }
 
@@ -514,6 +517,7 @@ func (m *chatTUI) ingestTurnDone(e event.Event) {
 	// (turnDiscarded), so any turn reaching here keeps its bubble in scrollback;
 	// just clear the un-sendable flag.
 	m.confirmBubbleSent()
+	m.echoedUser = ""
 	m.state = tuiIdle
 	m.turnPhase = ""
 	m.noteWatchdogIdle()
@@ -558,11 +562,42 @@ func (m *chatTUI) ingestPreflight(e event.Event) bool {
 		}
 		return true
 	}
-	// The first packet of any kind means the server replied — confirm the send so
-	// Esc cancels the stream instead of un-sending. TurnStarted is local (emitted
-	// before the request) and TurnDone is handled in its own case.
-	if e.Kind != event.TurnStarted && e.Kind != event.TurnDone {
+	// The first packet from the server confirms the send so Esc cancels
+	// the stream instead of un-sending. TurnStarted and UserMessage are
+	// local, emitted before the request. TurnDone has its own case.
+	if e.Kind != event.TurnStarted && e.Kind != event.TurnDone && e.Kind != event.UserMessage {
 		m.confirmBubbleSent()
 	}
 	return false
+}
+
+// ingestControllerUser draws a user turn the composer did not already echo.
+// The agent emits UserMessage for a composer turn and again when that turn is
+// admitted. Enter already drew the line, and a later packet clears
+// bubblePending, so the repeat is recognized by the echoed text. A letter the
+// composer did not draw, including a wake letter, is still shown once.
+func (m *chatTUI) ingestControllerUser(e event.Event) {
+	text := strings.TrimSpace(e.Text)
+	if text == "" || control.IsSyntheticUserMessage(text) {
+		return
+	}
+	if sender, body, ok := wakeIncomingParts(text); ok {
+		// An incoming letter is not an operator draft: Esc must not drop it
+		// into the composer, where the next Enter would send it as his own.
+		m.commitLine("")
+		m.commitTranscriptSource(transcriptSource{
+			kind: transcriptSourceIncoming, raw: body, aux: sender,
+		})
+		return
+	}
+	if m.bubblePending || (m.echoedUser != "" && text == m.echoedUser) {
+		return
+	}
+	m.commitLine("")
+	m.commitTranscriptSource(transcriptSource{
+		kind: transcriptSourceUser, raw: text, planMode: m.planMode,
+	})
+	m.echoedUser = text
+	m.bubblePending = true
+	m.pendingRestore = text
 }

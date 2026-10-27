@@ -9,7 +9,7 @@ import (
 type reasoningLanguageContextKey struct{}
 type responseLanguageContextKey struct{}
 
-// NormalizeReasoningLanguage returns one of auto|zh|en for runtime-only visible
+// NormalizeReasoningLanguage returns one of auto|zh|en|ru for runtime-only visible
 // reasoning preferences. Keep this local to agent so sub-agents can inherit the
 // preference without depending on config.
 func NormalizeReasoningLanguage(lang string) string {
@@ -18,6 +18,8 @@ func NormalizeReasoningLanguage(lang string) string {
 		return "zh"
 	case "en", "english":
 		return "en"
+	case "ru", "russian", "рус", "русский":
+		return "ru"
 	default:
 		return "auto"
 	}
@@ -62,6 +64,8 @@ func ReasoningLanguageBlock(lang string) string {
 		return "<reasoning-language>\n必须使用简体中文书写全部可见思考/推理文本：从第一个字开始就用中文，并在整轮内保持中文，即使系统提示词、工具说明、工具输出或引用的代码是英文。代码、标识符、文件路径、shell 命令和未翻译的技术术语保持原文。此要求只约束可见思考文本，不覆盖用户对最终回答语言的明确要求。\n</reasoning-language>"
 	case "en":
 		return "<reasoning-language>\nVisible reasoning/thinking text preference: use English when the provider exposes reasoning text. Keep code, identifiers, file paths, shell commands, and untranslated technical terms in their original form. This preference does not override an explicit user request for the final answer language.\n</reasoning-language>"
+	case "ru":
+		return "<reasoning-language>\nВидимый текст размышления пиши по-русски с первого слова и держи русский всю очередь, даже если системный промпт, описания инструментов, их вывод или код на другом языке. Код, идентификаторы, пути, команды shell и непереведённые термины оставляй как есть. Это только про видимое размышление и не отменяет явную просьбу о языке окончательного ответа.\n</reasoning-language>"
 	default:
 		return ""
 	}
@@ -280,7 +284,7 @@ func WithReasoningLanguagePreference(ctx context.Context, lang string) context.C
 	return context.WithValue(ctx, reasoningLanguageContextKey{}, NormalizeReasoningLanguage(lang))
 }
 
-// ReasoningLanguageFromContext returns auto|zh|en.
+// ReasoningLanguageFromContext returns auto|zh|en|ru.
 func ReasoningLanguageFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return "auto"

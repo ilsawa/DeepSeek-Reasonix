@@ -44,6 +44,7 @@ func (m *chatTUI) handleModelSwitch(msg modelSwitchMsg) []tea.Cmd {
 			return cmds
 		}
 		m.ctrl = activateGoalDriverAfterRebuild(msg.ctrl)
+		m.wakeSlot.set(m.ctrl)
 		if m.takeover != nil {
 			m.takeover.AttachController(msg.ctrl)
 		}

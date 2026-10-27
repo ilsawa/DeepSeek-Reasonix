@@ -5244,7 +5244,7 @@ function makeMockApp(): MockAppBindings {
       settings.agent = { ...settings.agent, compactRatio: ratio };
     },
     async SetReasoningLanguage(lang: string) {
-      const normalized = lang === "zh" || lang === "en" ? lang : "auto";
+      const normalized = lang === "zh" || lang === "en" || lang === "ru" ? lang : "auto";
       settings.agent = { ...settings.agent, reasoningLanguage: normalized };
     },
     // ── Heartbeat mock ──

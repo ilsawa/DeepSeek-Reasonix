@@ -647,7 +647,7 @@ Usage:
   reasonix serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  serve over HTTP+SSE (with optional auth)
   reasonix acp [--model NAME]                           serve Agent Client Protocol over stdio (also: reasonix --acp)
   reasonix setup [path]                                 interactive config wizard; writes reasonix.toml (+ .env)
-  reasonix config reasoning-language [auto|zh|en]        configure visible reasoning language
+  reasonix config reasoning-language [auto|zh|en|ru]     configure visible reasoning language
   reasonix config compact-ratio [--local] [30..85]       configure automatic compaction threshold
   reasonix config telemetry [auto|on|off]                configure content-free CLI usage metrics
   reasonix report [list|show|send|delete] [ID]           review and explicitly send local CLI crash reports

@@ -53,6 +53,18 @@ func TestReasoningLanguageBlockZhStaysImperative(t *testing.T) {
 	}
 }
 
+func TestReasoningLanguageBlockRu(t *testing.T) {
+	block := ReasoningLanguageBlock("ru")
+	for _, want := range []string{"<reasoning-language>", "по-русски", "окончательного ответа"} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("ru reasoning block lost required anchor %q:\n%s", want, block)
+		}
+	}
+	if ReasoningLanguageBlock("russian") != block {
+		t.Fatal("russian alias should use the same block as ru")
+	}
+}
+
 func TestWithReasoningLanguageAutoInfersFromSource(t *testing.T) {
 	chinese := WithReasoningLanguage("解释 AuthHandler 的 panic", "auto")
 	if !strings.HasPrefix(chinese, "<reasoning-language>") || !strings.Contains(chinese, "简体中文") {

@@ -588,7 +588,7 @@ var ChineseTraditional = Messages{
   reasonix serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  透過 HTTP+SSE 提供服務（支援可選認證）
   reasonix acp [--model NAME]                           透過 stdio 提供 Agent Client Protocol（也可用：reasonix --acp）
   reasonix setup [path]                                 互動式設定精靈；生成 reasonix.toml（及 .env）
-  reasonix config reasoning-language [auto|zh|en]        設定可見思考語言
+  reasonix config reasoning-language [auto|zh|en|ru]     設定可見思考語言
   reasonix config compact-ratio [--local] [30..85]       設定自動壓縮閾值
   reasonix config telemetry [auto|on|off]                設定不含內容的 CLI 使用統計
   reasonix report [list|show|send|delete] [ID]           審閱並明確傳送本機 CLI 當機報告

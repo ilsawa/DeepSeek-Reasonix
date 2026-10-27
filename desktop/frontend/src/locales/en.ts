@@ -2163,6 +2163,7 @@ export const en = {
   "settings.reasoningLanguage.auto": "Auto",
   "settings.reasoningLanguage.zh": "中文",
   "settings.reasoningLanguage.en": "English",
+  "settings.reasoningLanguage.ru": "Русский",
   "settings.compactRatio": "Automatic compaction threshold",
   "settings.compactRatioHint": "Global default · usually leave unchanged",
   "settings.compactRatioImpact": "Lower values compact sooner and may reduce prompt-cache reuse.",

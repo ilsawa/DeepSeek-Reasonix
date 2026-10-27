@@ -154,8 +154,8 @@ func TestSlashArgItems(t *testing.T) {
 	}
 	// /reasoning-language
 	items, _ = SlashArgItems("/reasoning-language ", data)
-	if !has(items, "auto") || !has(items, "zh") || !has(items, "en") || has(items, "中文") {
-		t.Errorf("/reasoning-language should offer only auto/zh/en; got %v", labelsOf(items))
+	if !has(items, "auto") || !has(items, "zh") || !has(items, "en") || !has(items, "ru") || has(items, "中文") {
+		t.Errorf("/reasoning-language should offer only auto/zh/en/ru; got %v", labelsOf(items))
 	}
 	// /currency
 	items, _ = SlashArgItems("/currency ", data)

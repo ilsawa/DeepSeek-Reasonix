@@ -233,9 +233,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "temperature       = %s\n", formatFloat(c.Agent.Temperature))
 	renderRecoveryAndCompletionValidation(&b, c)
 	if lang := c.ReasoningLanguage(); lang != "auto" {
-		fmt.Fprintf(&b, "reasoning_language = %q   # visible reasoning language: auto|zh|en\n", lang)
+		fmt.Fprintf(&b, "reasoning_language = %q   # visible reasoning language: auto|zh|en|ru\n", lang)
 	} else {
-		b.WriteString("# reasoning_language = \"zh\"   # visible reasoning language: auto|zh|en\n")
+		b.WriteString("# reasoning_language = \"zh\"   # visible reasoning language: auto|zh|en|ru\n")
 	}
 	fmt.Fprintf(&b, "compact_ratio       = %s   # sole auto trigger; presets 0.70/0.80/0.85 (default 0.80)\n", formatFloat(c.Agent.CompactRatio))
 	if c.Agent.Keep != nil {

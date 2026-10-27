@@ -1282,6 +1282,13 @@ func chatREPL(args []string, version string) int {
 	// Non-Termux terminals use an alt-screen transcript viewport. Termux stays
 	// in the normal buffer so native touch scrollback and soft-keyboard focus
 	// keep working; finalized transcript lines are emitted via tea.Println.
+	m.wakeSlot = &wakeSlot{}
+	m.wakeSlot.set(m.ctrl)
+	wakeLn, wakeErr := startWakeSocket(m.wakeSlot)
+	if wakeErr != nil {
+		fmt.Fprintln(os.Stderr, "wake:", wakeErr)
+	}
+	defer wakeLn.Close()
 	diagnostics.Milestone("terminal_takeover_begin")
 	p := tea.NewProgram(m)
 	takeoverManager.SetYieldCallback(func() { p.Send(tuiSessionReclaimedMsg{}) })
@@ -1297,6 +1304,7 @@ func chatREPL(args []string, version string) int {
 		}
 	}()
 	final, runErr := p.Run()
+	wakeLn.Close()
 	signal.Stop(hangup)
 	diagnostics.Milestone("terminal_released")
 	if err := takeoverManager.Close(); err != nil {
@@ -2676,7 +2684,7 @@ func formatCompactRatioPercent(ratio float64) string {
 
 func configUsage() {
 	fmt.Print(`Usage:
-  reasonix config reasoning-language [--local] [auto|zh|en]
+  reasonix config reasoning-language [--local] [auto|zh|en|ru]
   reasonix config compact-ratio [--local] [30..85]
   reasonix config currency [auto|CNY|USD]
   reasonix config telemetry [auto|on|off]
@@ -2763,7 +2771,7 @@ func configAutoPlanCompatibilityUsage() {
 
 func configReasoningLanguageUsage() {
 	fmt.Print(`Usage:
-  reasonix config reasoning-language [--local] [auto|zh|en]
+  reasonix config reasoning-language [--local] [auto|zh|en|ru]
 `)
 }
 

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"time"
 
 	"reasonix/internal/control"
@@ -96,6 +97,7 @@ func (m *chatTUI) prepareControllerTurn(intent controllerTurnIntent, settingsChe
 	m.commitTranscriptSource(transcriptSource{
 		kind: transcriptSourceUser, raw: displayed, planMode: m.planMode,
 	})
+	m.echoedUser = strings.TrimSpace(displayed)
 	m.bubblePending = true
 	m.turnDiscarded = false
 

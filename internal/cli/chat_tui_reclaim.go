@@ -61,6 +61,7 @@ func (m *chatTUI) handleSessionReclaimed() {
 		m.releaseCanonicalRuntime(current)
 	}
 	m.sessionReclaimed = true
+	m.wakeSlot.set(nil)
 	// A picker opened before the reclaim listed the yielded session as
 	// switchable; its rows and default selection are stale now.
 	m.resumePick = nil

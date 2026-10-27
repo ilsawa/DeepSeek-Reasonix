@@ -26,6 +26,7 @@ const (
 	transcriptSourceReplayBundle
 	transcriptSourceTurnReceipt
 	transcriptSourceSubagentProgress
+	transcriptSourceIncoming
 )
 
 // transcriptSource retains only the semantic inputs needed to reproduce a
@@ -113,6 +114,8 @@ func (m *chatTUI) renderTranscriptSource(source transcriptSource, terminalWidth 
 			return m.subagentProgressBlock(source.raw, sp)
 		}
 		return ""
+	case transcriptSourceIncoming:
+		return renderIncomingLetter(source.aux, source.raw, terminalWidth)
 	default:
 		return ""
 	}

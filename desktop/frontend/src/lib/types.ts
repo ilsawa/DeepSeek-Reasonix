@@ -2012,7 +2012,7 @@ export interface AgentView {
   maxSubagentConcurrency: number;
   maxParallelWriters: number;
   systemPrompt: string;
-  reasoningLanguage: string; // "auto" | "zh" | "en"
+  reasoningLanguage: string; // "auto" | "zh" | "en" | "ru"
   compactRatio?: number; // Advanced global default; older backends omit it.
   effectiveCompactRatio?: number; // Active local session after project overrides.
   compactRatioOverridden?: boolean;

@@ -2165,6 +2165,7 @@ export const zh: Record<DictKey, string> = {
   "settings.reasoningLanguage.auto": "自动",
   "settings.reasoningLanguage.zh": "中文",
   "settings.reasoningLanguage.en": "English",
+  "settings.reasoningLanguage.ru": "Русский",
   "settings.compactRatio": "自动压缩阈值",
   "settings.compactRatioHint": "全局默认 · 通常无需修改",
   "settings.compactRatioImpact": "调低会更早压缩，可能降低缓存复用。",

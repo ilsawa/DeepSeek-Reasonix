@@ -1762,6 +1762,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.reasoningLanguage.auto": "自動",
   "settings.reasoningLanguage.zh": "中文",
   "settings.reasoningLanguage.en": "English",
+  "settings.reasoningLanguage.ru": "Русский",
   "settings.compactRatio": "自動壓縮閾值",
   "settings.compactRatioHint": "全域預設 · 通常無需修改",
   "settings.compactRatioImpact": "調低會更早壓縮，可能降低快取複用。",

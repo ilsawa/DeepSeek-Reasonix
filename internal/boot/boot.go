@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -859,6 +860,22 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			bgSpecs[i].Stderr = opts.Stderr
 		}
 	}
+
+	// tier=eager still means the handshake finishes before the first model
+	// turn. 1.39 left that tier as a label and its renderer drops the field,
+	// so the model only saw a connect stub. REASONIX_DIRECT_MCP=1 (the Zerde
+	// launcher) handshakes every enabled server before the first turn.
+	connectEntries := eagerEntries
+	if os.Getenv("REASONIX_DIRECT_MCP") == "1" {
+		connectEntries = append(append([]config.PluginEntry{}, eagerEntries...), bgEntries...)
+	}
+	eagerConfigSpecs := PluginSpecsForRootWithOptions(connectEntries, root, pluginSpecOptions)
+	if opts.Stderr != nil {
+		for i := range eagerConfigSpecs {
+			eagerConfigSpecs[i].Stderr = opts.Stderr
+		}
+	}
+	connectEagerPlugins(ctx, pluginHost, reg, eagerConfigSpecs, sink)
 
 	// Host-session ExtraPlugins (for example ACP session servers) are explicit
 	// for this controller and still take a short readiness probe so recovery and
@@ -2579,6 +2596,50 @@ func addBuiltins(reg *tool.Registry, enabled, writeRoots []string, writeRootSet 
 		}
 	}
 	registerShellBuiltin(reg, bashTool, writeRootSet)
+}
+
+// connectEagerPlugins handshakes tier=eager servers before the model is
+// called and registers the live tools. A failure leaves the lazy connect stub
+// in place via the ordinary catalog path.
+func connectEagerPlugins(ctx context.Context, host *plugin.Host, reg *tool.Registry, specs []plugin.Spec, sink event.Sink) {
+	if host == nil || reg == nil || len(specs) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	type outcome struct {
+		name  string
+		tools []tool.Tool
+		err   error
+	}
+	out := make(chan outcome, len(specs))
+	for _, spec := range specs {
+		wg.Add(1)
+		go func(spec plugin.Spec) {
+			defer wg.Done()
+			callCtx, cancel := context.WithTimeout(ctx, spec.ResolvedStartupTimeout())
+			defer cancel()
+			tools, err := host.EnsureConnectedWithLifecycle(ctx, callCtx, spec, 0)
+			out <- outcome{name: spec.Name, tools: tools, err: err}
+		}(spec)
+	}
+	wg.Wait()
+	close(out)
+	for item := range out {
+		if item.err != nil {
+			if sink != nil {
+				sink.Emit(event.Event{
+					Kind:   event.Notice,
+					Level:  event.LevelWarn,
+					Text:   "An eager MCP server failed to connect.",
+					Detail: fmt.Sprintf("mcp %s: %v", item.name, item.err),
+				})
+			}
+			continue
+		}
+		for _, t := range item.tools {
+			reg.Add(t)
+		}
+	}
 }
 
 // partitionByTier splits configured plugin entries into eager (block boot until
