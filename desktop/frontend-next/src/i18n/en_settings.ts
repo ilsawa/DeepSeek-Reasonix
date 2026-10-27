@@ -1003,6 +1003,8 @@ export const EN_SETTINGS: Record<string, string> = {
   "关闭窗口后在托盘中继续运行": "Keep running in the tray when the window is closed",
   "关闭窗口不会中断会话和后台任务；从托盘菜单退出才会完全关闭程序": "Closing the window does not stop sessions or background tasks; use Quit in the tray menu to exit completely",
   "本轮执行": "This turn",
+  "位于项目文件夹内": "Inside a project folder",
+  "位于项目文件夹 {path} 内，出于安全不从这里启动": "Inside the project folder {path}, so it is not started from here for safety",
   "运行环境": "Where it runs",
   "记录与用量": "What it remembers",
   "这台机器": "This machine",

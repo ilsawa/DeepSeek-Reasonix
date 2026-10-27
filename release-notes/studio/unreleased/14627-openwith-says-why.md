@@ -1,0 +1,2 @@
+- 改进：已安装的程序如果位于项目文件夹内，“用其他程序打开”会列出它并标明“位于项目文件夹内”，悬停可看是哪个文件夹，不再悄悄消失。关联 #14627。
+- Changed: an installed program that sits inside a project folder is now listed in “Open with” as unavailable, with a note and the folder on hover, instead of silently missing. Refs #14627.

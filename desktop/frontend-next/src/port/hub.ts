@@ -101,6 +101,8 @@ export interface OpenWithTarget {
   id: string;
   name: string;
   available: boolean;
+  why?: string;
+  within?: string;
 }
 
 export interface TreeWorkspace {
