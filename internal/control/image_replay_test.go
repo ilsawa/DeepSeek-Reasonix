@@ -49,8 +49,8 @@ func TestHistoricalImageLossDoesNotBlockTextOrHealthyImages(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(got[0].Images) != 1 || !strings.Contains(got[0].Content, "unavailable") || got[1].Content != messages[1].Content {
-				t.Fatalf("recovered messages = %+v", got)
+			if len(got[0].Images) != 0 || len(got[0].ImageInputs) != 0 || !strings.Contains(got[0].Content, "not attached again") || strings.Contains(got[0].Content, "https://example.invalid/healthy.png") || got[1].Content != messages[1].Content {
+				t.Fatalf("answered image was sent again: %+v", got)
 			}
 			after, _ := json.Marshal(messages)
 			if !bytes.Equal(before, after) {
@@ -59,12 +59,54 @@ func TestHistoricalImageLossDoesNotBlockTextOrHealthyImages(t *testing.T) {
 			if _, err := c.ResolveRequestImagesForModel(t.Context(), messages[:1], "fixture/vision", true); err == nil {
 				t.Fatal("current-turn image failure was ignored")
 			}
-			ctx, cancel := context.WithCancel(t.Context())
-			cancel()
-			if _, err := c.ResolveRequestImagesForModel(ctx, messages, "fixture/vision", true); !errors.Is(err, context.Canceled) {
-				t.Fatalf("cancellation was swallowed: %v", err)
-			}
 		})
+	}
+}
+
+func TestAnsweredVisionImageIsNotAttachedAgain(t *testing.T) {
+	root := t.TempDir()
+	c := newOwnedTestController(t, Options{WorkspaceRoot: root, SessionPath: filepath.Join(root, "session.jsonl"), ImageRouteConfig: config.Default()})
+	note := imageAttachmentNote(".reasonix/attachments/clipboard.png", true)
+	old := "Referenced context:\n\n<image path=\".reasonix/attachments/clipboard.png\">\n" + note + "\n</image>\n\nwhat is on the screen"
+	messages := []provider.Message{
+		{ID: "old", Role: provider.RoleUser, Content: old, ImageInputs: []attachment.ImageInput{{Kind: attachment.KindURL, URL: "https://example.invalid/old.png"}}},
+		{ID: "said", Role: provider.RoleAssistant, Content: "a dialog list"},
+		{ID: "now", Role: provider.RoleUser, Content: "the ritual is in the list"},
+		{ID: "shot", Role: provider.RoleTool, Content: "screenshot taken", ImageInputs: []attachment.ImageInput{{Kind: attachment.KindURL, URL: "https://example.invalid/now.png"}}},
+	}
+	before, _ := json.Marshal(messages)
+	got, err := c.ResolveRequestImagesForModel(t.Context(), messages, "fixture/vision", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[0].Images) != 0 || len(got[0].ImageInputs) != 0 {
+		t.Fatalf("old image attached again: %+v", got[0])
+	}
+	if strings.Contains(got[0].Content, answeredImageLookOrder) || !strings.Contains(got[0].Content, "what is on the screen") || !strings.Contains(got[0].Content, "not attached again") {
+		t.Fatalf("old turn copy = %q", got[0].Content)
+	}
+	if len(got[3].Images) != 1 || got[3].Images[0] != "https://example.invalid/now.png" {
+		t.Fatalf("current tool image = %+v", got[3].Images)
+	}
+	if got[2].Content != messages[2].Content {
+		t.Fatal("current question was rewritten")
+	}
+	after, _ := json.Marshal(messages)
+	if !bytes.Equal(before, after) {
+		t.Fatal("request copy rewrote the session")
+	}
+	current := []provider.Message{messages[0]}
+	seen, err := c.ResolveRequestImagesForModel(t.Context(), current, "fixture/vision", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen[0].Images) != 1 || seen[0].Images[0] != "https://example.invalid/old.png" || !strings.Contains(seen[0].Content, answeredImageLookOrder) {
+		t.Fatalf("current image was withheld: %+v", seen[0])
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := c.ResolveRequestImagesForModel(ctx, current, "fixture/vision", true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation was swallowed: %v", err)
 	}
 }
 

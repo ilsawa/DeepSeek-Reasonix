@@ -45,7 +45,7 @@ func TestLegacyImageResolverPreservesSerializedProtocolBytes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			messages := []provider.Message{{Role: provider.RoleSystem, Content: "unchanged system"}, {Role: provider.RoleUser, Content: "legacy image", Images: []string{"data:image/png;base64," + tinyPNG}}, {Role: provider.RoleAssistant, Content: "unchanged history"}, {Role: provider.RoleUser, Content: "next turn"}}
+			messages := []provider.Message{{Role: provider.RoleSystem, Content: "unchanged system"}, {Role: provider.RoleUser, Content: "earlier"}, {Role: provider.RoleAssistant, Content: "unchanged history"}, {Role: provider.RoleUser, Content: "legacy image", Images: []string{"data:image/png;base64," + tinyPNG}}}
 			c := newOwnedTestController(t, Options{WorkspaceRoot: t.TempDir(), ImageRouteConfig: config.Default()})
 			resolved, err := c.ResolveRequestImagesForModel(t.Context(), messages, "fixture/vision", true)
 			if err != nil {

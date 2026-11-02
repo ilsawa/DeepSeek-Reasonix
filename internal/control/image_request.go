@@ -167,6 +167,13 @@ func (c *Controller) ResolveRequestImagesForModel(ctx context.Context, msgs []pr
 		if out[i].LocalOnly {
 			continue
 		}
+		// A later real user turn has already been asked. Do not load the
+		// earlier image again, and do not repeat the order to look at it.
+		// The stored message is a different value; this edits the copy only.
+		if native && i < currentTurn && messageCarriesImage(out[i]) {
+			withholdAnsweredImages(&out[i])
+			continue
+		}
 		if err := out[i].ValidateImageFields(); err != nil {
 			if i >= currentTurn {
 				return nil, fmt.Errorf("%s: %w", i18n.M.ImageRequestRecovery, err)

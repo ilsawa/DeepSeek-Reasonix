@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"strings"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/attachment"
@@ -25,6 +27,39 @@ func lastImageRequestTurn(messages []provider.Message) int {
 		}
 	}
 	return 0 // no known user boundary: keep all inputs required
+}
+
+// answeredImageLookOrder is the host sentence that tells a vision model to
+// read an attached image. It stays on the session message. A later request
+// must not repeat it: the pixels are no longer attached.
+const answeredImageLookOrder = "Look at the image directly; do not OCR or read the file unless the user asks."
+
+const answeredImageWithheldNote = "[This earlier image was already shown and is not attached again. Use the earlier description in the conversation. Do not inspect the image again unless the user attaches it once more.]"
+
+var answeredImageNoteRE = regexp.MustCompile(`\[(?:The image at @|image file )[^\[\]]*` + regexp.QuoteMeta(answeredImageLookOrder) + `\]\n?`)
+
+var emptyImageTagRE = regexp.MustCompile(`(?s)<image\b[^>]*>\s*</image>\n?`)
+
+func messageCarriesImage(m provider.Message) bool {
+	return len(m.Images) > 0 || len(m.ImageInputs) > 0 || strings.Contains(m.Content, answeredImageLookOrder)
+}
+
+// withholdAnsweredImages drops an already answered image from one request
+// copy. The session message keeps its attachment and the original wording.
+func withholdAnsweredImages(m *provider.Message) {
+	m.Images = nil
+	m.ImageInputs = nil
+	if strings.Contains(m.Content, answeredImageLookOrder) {
+		m.Content = answeredImageNoteRE.ReplaceAllString(m.Content, "")
+		m.Content = emptyImageTagRE.ReplaceAllString(m.Content, "")
+	}
+	if strings.Contains(m.Content, "not attached again") {
+		return
+	}
+	if strings.TrimSpace(m.Content) != "" && !strings.HasSuffix(m.Content, "\n") {
+		m.Content += "\n"
+	}
+	m.Content += answeredImageWithheldNote
 }
 
 // Resolve independently so a missing old attachment does not discard its
