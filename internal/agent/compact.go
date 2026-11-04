@@ -402,6 +402,10 @@ func compactionInstructionWithFocus(instructions string) string {
 // summarize. Keeping planning and execution on this shared builder prevents a
 // supposedly safe overflow fold from being rejected only after it is selected.
 func (a *Agent) summaryRequest(region []provider.Message, instructions string) provider.Request {
+	return a.summaryRequestWithTools(region, instructions, true)
+}
+
+func (a *Agent) summaryRequestWithTools(region []provider.Message, instructions string, withTools bool) provider.Request {
 	prefix := append([]provider.Message(nil), region...)
 	for i := range prefix {
 		if !a.imageInput.native && prefix[i].VisionSummary != nil {
@@ -417,7 +421,7 @@ func (a *Agent) summaryRequest(region []provider.Message, instructions string) p
 	messages := a.normalizeModelRequestMessages(prefix)
 	messages = append(messages, HostGeneratedUserMessage(compactionInstructionWithFocus(instructions)))
 	var schemas []provider.ToolSchema
-	if a.svc.tools != nil {
+	if withTools && a.svc.tools != nil {
 		schemas = a.providerToolSchemas()
 	}
 	return provider.Request{
@@ -431,7 +435,11 @@ func (a *Agent) summaryRequest(region []provider.Message, instructions string) p
 // summarize asks the executor's own provider to distill a replayed prefix into
 // a briefing. instructions is optional /compact focus + PreCompact text.
 func (a *Agent) summarize(ctx context.Context, region []provider.Message, instructions string) (string, *provider.Usage, error) {
-	req := a.summaryRequest(region, instructions)
+	return a.summarizeWithTools(ctx, region, instructions, true)
+}
+
+func (a *Agent) summarizeWithTools(ctx context.Context, region []provider.Message, instructions string, withTools bool) (string, *provider.Usage, error) {
+	req := a.summaryRequestWithTools(region, instructions, withTools)
 	summary, usage, err := a.runSummaryRequest(ctx, req)
 	a.observeSummaryOutcome(req, usage, err)
 	return summary, usage, err
@@ -525,11 +533,16 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 	}
 }
 
-// summarizeOnce performs exactly one application-layer summary request.
-// Timeouts, empty results, stream errors, and output truncation all fail once
-// with no second attempt.
+// summarizeOnce performs one summary request. An empty briefing is retried
+// once without tool schemas: the first request keeps them so the cache prefix
+// matches an ordinary turn, and a tool call from that request is not a digest.
+// Timeouts, stream errors, and output truncation fail once with no second attempt.
 func (a *Agent) summarizeOnce(ctx context.Context, fold []provider.Message, instructions string) (string, *provider.Usage, error) {
-	return a.summarize(ctx, fold, instructions)
+	summary, usage, err := a.summarize(ctx, fold, instructions)
+	if err == nil || !errors.Is(err, errSummaryEmpty) || ctx.Err() != nil {
+		return summary, usage, err
+	}
+	return a.summarizeWithTools(ctx, fold, instructions, false)
 }
 
 // renderTranscript flattens messages into a bounded transcript for the

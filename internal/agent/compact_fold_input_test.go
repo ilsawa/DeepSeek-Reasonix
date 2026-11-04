@@ -281,3 +281,49 @@ func (p *failOnceProvider) Stream(_ context.Context, _ provider.Request) (<-chan
 	close(ch)
 	return ch, nil
 }
+
+// toolThenTextProvider answers with a tool call while tools are offered and
+// with a digest once they are not.
+type toolThenTextProvider struct {
+	calls int
+	got   []provider.Request
+}
+
+func (p *toolThenTextProvider) Name() string { return "tool-then-text" }
+
+func (p *toolThenTextProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	p.calls++
+	p.got = append(p.got, req)
+	ch := make(chan provider.Chunk, 2)
+	if len(req.Tools) > 0 {
+		ch <- provider.Chunk{Type: provider.ChunkToolCallStart, ToolCall: &provider.ToolCall{ID: "call-1", Name: "echo"}}
+	} else {
+		ch <- provider.Chunk{Type: provider.ChunkText, Text: "kept digest"}
+	}
+	ch <- provider.Chunk{Type: provider.ChunkDone}
+	close(ch)
+	return ch, nil
+}
+
+func TestSummarizeOnceEmptyRetriesWithoutTools(t *testing.T) {
+	prov := &toolThenTextProvider{}
+	reg := tool.NewRegistry()
+	reg.Add(echoTool{})
+	a := New(prov, reg, NewSession("system"), Options{ContextWindow: 100_000}, event.Discard)
+	got, _, err := a.summarizeOnce(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "old"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "kept digest" {
+		t.Fatalf("summary = %q, want kept digest", got)
+	}
+	if prov.calls != 2 {
+		t.Fatalf("calls = %d, want 2", prov.calls)
+	}
+	if len(prov.got[0].Tools) == 0 {
+		t.Fatal("first summary request dropped tools")
+	}
+	if len(prov.got[1].Tools) != 0 {
+		t.Fatalf("retry tools = %+v, want none", prov.got[1].Tools)
+	}
+}
