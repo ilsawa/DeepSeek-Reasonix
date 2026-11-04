@@ -169,6 +169,50 @@ func TestManualCompactMultiBatchWhenSingleFoldInsufficient(t *testing.T) {
 	}
 }
 
+// TestPressureOverCeilingKeepsIntermediateAndContinues is the loaded-session
+// first turn. Pressure runs before overflow recovery. One admissible batch
+// stays above the hard ceiling, and that smaller view has to be kept for the
+// next batch. Rejecting it aborts the turn and leaves the history as it was.
+func TestPressureOverCeilingKeepsIntermediateAndContinues(t *testing.T) {
+	window := 50_000
+	prov := &recordingSharedWindowProvider{sharedWindowTestProvider: sharedWindowTestProvider{budget: 128 * 1024, shared: true}}
+	sess := foldableSessionOverForce(6)
+	a := agentOverForceWindow(t, prov, sess, window)
+
+	big := strings.Repeat("word ", 400)
+	hard := a.hardInputCeiling()
+	for i := 0; i < 500 && a.estimatedVisibleRequestTokens(a.modelVisibleMessages()) < 2*hard+10_000; i++ {
+		sess.Add(provider.Message{Role: provider.RoleAssistant, Content: big})
+		sess.Add(provider.Message{Role: provider.RoleUser, Content: "continue"})
+	}
+	if est := a.estimatedVisibleRequestTokens(a.modelVisibleMessages()); est < 2*hard {
+		t.Fatalf("fixture did not reach double ceiling: %d < %d", est, 2*hard)
+	}
+
+	if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
+		t.Fatalf("pressure over ceiling: %v", err)
+	}
+	if len(prov.requests) < 2 {
+		t.Fatalf("summary calls = %d, want at least 2 rescue batches", len(prov.requests))
+	}
+	maxPrompt := window - a.summaryOutputBudget() - protocolReserveTokens
+	for i, req := range prov.requests {
+		if got := a.estimatedRequestTokens(req); got > maxPrompt {
+			t.Fatalf("summary request %d estimated %d tokens, exceeds admissible %d", i, got, maxPrompt)
+		}
+	}
+	var second strings.Builder
+	for _, m := range prov.requests[1].Messages {
+		second.WriteString(m.Content)
+	}
+	if !strings.Contains(second.String(), summaryTagOpen) {
+		t.Fatal("second pressure batch did not merge the prior digest into its input")
+	}
+	if est := a.estimatedVisibleRequestTokens(a.modelVisibleMessages()); est >= hard {
+		t.Fatalf("pressure left view over ceiling: %d >= %d", est, hard)
+	}
+}
+
 // TestManualCompactBelowCeilingKeepsSingleFold pins the ordinary manual
 // contract: below the hard ceiling a manual compact still prunes nothing,
 // makes exactly one summarizer call, and installs exactly one projection.

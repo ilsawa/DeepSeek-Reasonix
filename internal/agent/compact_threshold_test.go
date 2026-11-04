@@ -101,13 +101,16 @@ func TestAcceptCheckpointCandidateRules(t *testing.T) {
 	if err := a.acceptCheckpointCandidate(CompactionTriggerManual, 100_000, 80_000); err != nil {
 		t.Fatalf("manual below trigger: %v", err)
 	}
-	// Overflow keeps a reduction that is still over the ceiling so the next
-	// rescue pass can fold it. Pressure still refuses that shape.
+	// Overflow and pressure both keep a reduction that is still over the
+	// ceiling so the next rescue pass can fold it.
 	if err := a.acceptCheckpointCandidate(CompactionTriggerOverflow, 1_200_000, 1_050_000); err != nil {
 		t.Fatalf("overflow intermediate above ceiling: %v", err)
 	}
-	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 1_200_000, 1_050_000); err == nil {
-		t.Fatal("pressure candidate above ceiling was accepted")
+	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 1_200_000, 1_050_000); err != nil {
+		t.Fatalf("pressure intermediate above ceiling: %v", err)
+	}
+	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 1_200_000, 1_200_000); err == nil {
+		t.Fatal("pressure candidate without a reduction was accepted")
 	}
 }
 
@@ -120,7 +123,10 @@ func TestOverflowOverCeilingUsesManualRecoveryBudget(t *testing.T) {
 	if under != 1 {
 		t.Fatalf("overflow under ceiling = %d, want 1", under)
 	}
-	if got := maxSummariesFor(ContextPreparePolicy{Trigger: CompactionTriggerPressure}, true); got != 2 {
-		t.Fatalf("pressure summaries = %d, want 2", got)
+	if got := maxSummariesFor(ContextPreparePolicy{Trigger: CompactionTriggerPressure}, true); got != manualRecoverySummaries {
+		t.Fatalf("pressure over ceiling = %d, want %d", got, manualRecoverySummaries)
+	}
+	if got := maxSummariesFor(ContextPreparePolicy{Trigger: CompactionTriggerPressure}, false); got != 2 {
+		t.Fatalf("pressure under ceiling = %d, want 2", got)
 	}
 }

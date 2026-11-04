@@ -189,15 +189,17 @@ func shouldPruneBeforeFold(trigger string, overHardCeiling bool) bool {
 }
 
 // manualRecoverySummaries bounds the rescue loop for a compact that starts
-// at or above the hard input ceiling. Manual /compact and automatic overflow
-// recovery share it. Each batch folds the largest admissible prefix, so a
-// handful of batches recovers even a view several times the window while
-// capping summarizer spend on pathological input.
+// at or above the hard input ceiling. Manual /compact, overflow recovery,
+// and pressure on an already over-ceiling view share it. Each batch folds
+// the largest admissible prefix, so a handful of batches recovers a view
+// several times the window while capping summarizer spend.
 const manualRecoverySummaries = 4
 
 func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
 	switch {
-	case overCeiling && (policy.Trigger == CompactionTriggerManual || policy.Trigger == CompactionTriggerOverflow):
+	case overCeiling && (policy.Trigger == CompactionTriggerManual ||
+		policy.Trigger == CompactionTriggerOverflow ||
+		policy.Trigger == CompactionTriggerPressure):
 		return manualRecoverySummaries
 	case policy.Trigger == CompactionTriggerPressure:
 		return 2
