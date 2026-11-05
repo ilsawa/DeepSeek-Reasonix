@@ -9,6 +9,17 @@ import (
 
 const compactionBudget = 5 * time.Minute
 
+// summaryAttemptBudget is one summarizer call. A full-window prefix on the
+// local model takes about three minutes, so the attempt deadline sits above
+// that and a finished call is kept. The ordinary five-minute run is unchanged.
+const summaryAttemptBudget = 4 * time.Minute
+
+// maxRecoverySummaries caps a rescue that starts at least twice past the hard
+// ceiling. Four passes cannot walk that transcript back under the window, and
+// those passes used to share one five-minute budget, so the second call was
+// cancelled before the model answered.
+const maxRecoverySummaries = 8
+
 // SummaryError keeps the failure identity without changing the wire contract.
 type SummaryError struct {
 	Code  string
@@ -20,6 +31,10 @@ func (e *SummaryError) Unwrap() error { return e.Cause }
 
 var errSummaryEmpty = errors.New("summarizer returned empty output")
 var errSummaryBudget = &SummaryError{Code: "summary_budget_exceeded", Cause: context.DeadlineExceeded}
+
+// errSummaryAttempt is one call that used its own deadline while the rescue
+// run is still alive. The committed folds stay; the next pass may start.
+var errSummaryAttempt = &SummaryError{Code: "summary_attempt_exceeded", Cause: context.DeadlineExceeded}
 
 func summaryError(err error) error {
 	if err == nil {
@@ -66,6 +81,26 @@ func currentCompactionRun(ctx context.Context) *compactionRun {
 	return run
 }
 
+// compactionRunBudget is five minutes until the view is at least twice the
+// hard ceiling. Past that, each rescue pass gets its own attempt deadline.
+// A modest overflow keeps the short budget the tests and ordinary retries use.
+func (a *Agent) compactionRunBudget() time.Duration {
+	if a == nil || a.sess.conversation == nil {
+		return compactionBudget
+	}
+	est := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
+	hard := a.hardInputCeiling()
+	if hard <= 0 || est < hard*2 {
+		return compactionBudget
+	}
+	passes := summariesFor(ContextPreparePolicy{Trigger: CompactionTriggerPressure}, est, hard)
+	budget := time.Duration(passes) * summaryAttemptBudget
+	if budget < compactionBudget {
+		return compactionBudget
+	}
+	return budget
+}
+
 // Every nested summary, replan, and chunk inherits the same deadline. The
 // caller's ordinary answer context is not cancelled by this work budget.
 func (a *Agent) beginCompactionRun(parent context.Context) (context.Context, func(error) error) {
@@ -75,7 +110,7 @@ func (a *Agent) beginCompactionRun(parent context.Context) (context.Context, fun
 	if run := currentCompactionRun(parent); run != nil {
 		return run.work, func(err error) error { return err }
 	}
-	ctx, cancel := context.WithTimeoutCause(parent, compactionBudget, errSummaryBudget)
+	ctx, cancel := context.WithTimeoutCause(parent, a.compactionRunBudget(), errSummaryBudget)
 	run := &compactionRun{}
 	ctx = context.WithValue(ctx, compactionRunKey{}, run)
 	run.work = ctx

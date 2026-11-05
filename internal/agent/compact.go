@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"reasonix/internal/ablation"
@@ -481,7 +482,13 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 	if err := ctx.Err(); err != nil {
 		return "", usage, err
 	}
-	ch, err := provider.StreamAuxiliary(ctx, a.svc.prov, req)
+	streamCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) > compactionBudget {
+		var cancelAttempt context.CancelFunc
+		streamCtx, cancelAttempt = context.WithTimeoutCause(ctx, summaryAttemptBudget, errSummaryAttempt)
+		defer cancelAttempt()
+	}
+	ch, err := provider.StreamAuxiliary(streamCtx, a.svc.prov, req)
 	if err != nil {
 		return "", usage, err
 	}
@@ -497,10 +504,21 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 	toolCalls := 0
 	for {
 		select {
-		case <-ctx.Done():
-			return "", usage, ctx.Err()
+		case <-streamCtx.Done():
+			if ctx.Err() != nil {
+				return "", usage, ctx.Err()
+			}
+			return "", usage, errSummaryAttempt
 		case chunk, ok := <-ch:
 			if !ok {
+				if ctx.Err() != nil {
+					return "", usage, ctx.Err()
+				}
+				// The auxiliary buffer closes without an error chunk when its
+				// own deadline wins. That is one missed pass, not an empty digest.
+				if attemptTimedOut(ctx, streamCtx) {
+					return "", usage, errSummaryAttempt
+				}
 				if usage != nil && usage.FinishReason == "length" {
 					return "", usage, fmt.Errorf("%w: provider reached the output token limit", errSummaryOutputTruncated)
 				}
@@ -527,10 +545,22 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 			case provider.ChunkUsage:
 				usage = chunk.Usage
 			case provider.ChunkError:
+				if ctx.Err() != nil {
+					return "", usage, ctx.Err()
+				}
+				if attemptTimedOut(ctx, streamCtx) && errors.Is(chunk.Err, context.DeadlineExceeded) {
+					return "", usage, errSummaryAttempt
+				}
 				return "", usage, chunk.Err
 			}
 		}
 	}
+}
+
+// attemptTimedOut is one summarizer call whose own deadline fired while the
+// rescue run is still open. Committed folds stay; the next pass may start.
+func attemptTimedOut(parent, stream context.Context) bool {
+	return parent.Err() == nil && stream.Err() != nil && errors.Is(context.Cause(stream), errSummaryAttempt)
 }
 
 // summarizeOnce performs one summary request. An empty briefing is retried

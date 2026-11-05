@@ -130,3 +130,17 @@ func TestOverflowOverCeilingUsesManualRecoveryBudget(t *testing.T) {
 		t.Fatalf("pressure under ceiling = %d, want 2", got)
 	}
 }
+
+func TestRecoveryPassesForLargeOverflow(t *testing.T) {
+	hard := 151296
+	policy := ContextPreparePolicy{Trigger: CompactionTriggerPressure}
+	if got := summariesFor(policy, 716000, hard); got != maxRecoverySummaries {
+		t.Fatalf("several times the window = %d, want %d", got, maxRecoverySummaries)
+	}
+	if got := summariesFor(policy, hard+10, hard); got != manualRecoverySummaries {
+		t.Fatalf("just over the ceiling = %d, want %d", got, manualRecoverySummaries)
+	}
+	if got := summariesFor(policy, hard-1, hard); got != 2 {
+		t.Fatalf("under the ceiling = %d, want 2", got)
+	}
+}

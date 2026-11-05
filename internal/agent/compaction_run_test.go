@@ -156,3 +156,42 @@ func TestNestedCompactionRunKeepsOriginalBudget(t *testing.T) {
 		_ = finish(nil)
 	})
 }
+
+// timeoutOnceProvider blocks the first summary until its own deadline, then
+// answers. A far-over-ceiling rescue must keep that deadline off the run budget.
+type timeoutOnceProvider struct {
+	calls int
+	reply string
+}
+
+func (p *timeoutOnceProvider) Name() string { return "timeout-once" }
+
+func (p *timeoutOnceProvider) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	p.calls++
+	if p.calls == 1 {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return (&fakeProvider{reply: p.reply}).Stream(ctx, req)
+}
+
+func TestLargeOverflowContinuesAfterAttemptTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		p := &timeoutOnceProvider{reply: "older turns folded; keep the latest request"}
+		a := New(p, nil, foldableSessionOverForce(40), Options{ContextWindow: 4000}, event.Discard)
+		started := time.Now()
+		_, err := a.contextManager().Prepare(t.Context(), ContextPreparePolicy{Trigger: CompactionTriggerPressure})
+		if errors.Is(err, errSummaryBudget) {
+			t.Fatalf("rescue died on the shared budget after %s: %v", time.Since(started), err)
+		}
+		if p.calls < 2 {
+			t.Fatalf("calls=%d, want another pass after the attempt deadline", p.calls)
+		}
+		if time.Since(started) < summaryAttemptBudget {
+			t.Fatalf("elapsed %s, the attempt deadline did not bind", time.Since(started))
+		}
+		if a.currentProjectionVersion() == 0 {
+			t.Fatal("no fold kept after the timed-out pass")
+		}
+	})
+}

@@ -188,11 +188,10 @@ func shouldPruneBeforeFold(trigger string, overHardCeiling bool) bool {
 	}
 }
 
-// manualRecoverySummaries bounds the rescue loop for a compact that starts
-// at or above the hard input ceiling. Manual /compact, overflow recovery,
-// and pressure on an already over-ceiling view share it. Each batch folds
-// the largest admissible prefix, so a handful of batches recovers a view
-// several times the window while capping summarizer spend.
+// manualRecoverySummaries bounds a compact that starts just over the hard
+// input ceiling. Manual /compact, overflow recovery, and pressure share it.
+// A view at least twice past the ceiling uses summariesFor, up to
+// maxRecoverySummaries, because one largest-prefix fold cannot close that gap.
 const manualRecoverySummaries = 4
 
 func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
@@ -208,11 +207,36 @@ func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
 	}
 }
 
+// summariesFor is the rescue length for this view. Just over the ceiling, the
+// fixed handful of passes is enough. Twice past it, each pass can remove about
+// half a window, so the count follows the excess up to maxRecoverySummaries.
+func summariesFor(policy ContextPreparePolicy, est, hard int) int {
+	over := hard <= 0 || est >= hard
+	base := maxSummariesFor(policy, over)
+	if hard <= 0 || est < hard*2 {
+		return base
+	}
+	switch policy.Trigger {
+	case CompactionTriggerManual, CompactionTriggerOverflow, CompactionTriggerPressure:
+	default:
+		return base
+	}
+	step := max(hard/2, 1)
+	need := (est - hard + step - 1) / step
+	if need < base {
+		return base
+	}
+	if need > maxRecoverySummaries {
+		return maxRecoverySummaries
+	}
+	return need
+}
+
 func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContext, policy ContextPreparePolicy, inputHash string, est, fold, hard int, forceFold bool) (PreparedContext, error) {
 	a := m.agent
 	// Reserve the manual rescue budget when an overflow may reveal a window.
 	// With no known ceiling, the first successful fold completes the request.
-	maxSummaries := maxSummariesFor(policy, hard <= 0 || est >= hard)
+	maxSummaries := summariesFor(policy, est, hard)
 	ladder := newSummaryLadder(maxSummaries)
 	result := prepared
 	for ladder.next() {
@@ -226,6 +250,12 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil && !errors.Is(context.Cause(ctx), errSummaryBudget) {
 				return PreparedContext{}, ctxErr
+			}
+			// One call missed its own deadline. Keep the folds already committed
+			// and start the next pass while the rescue run is still open.
+			if errors.Is(err, errSummaryAttempt) && ctx.Err() == nil {
+				result = m.currentPrepared()
+				continue
 			}
 			if ladder.absorbOverflow(err) {
 				// Summary feedback may have learned both the physical window and
