@@ -81,6 +81,47 @@ func (a *Agent) InvalidateProjection() {
 	}
 }
 
+// RetainCoveredCanonical keeps a cleanup slice from rewriting the covered
+// prefix of a live compaction projection. Messages inside the cover stay byte
+// for byte, so the fold remains valid; only the uncovered tail is taken from
+// stripped. With no live projection, stripped is returned unchanged.
+func (a *Agent) RetainCoveredCanonical(current, stripped []provider.Message) []provider.Message {
+	if a == nil || a.sess.conversation == nil {
+		return stripped
+	}
+	a.sess.compactionMu.Lock()
+	st := a.sess.compactionState
+	key := a.currentPromptCacheKeyLocked()
+	a.sess.compactionMu.Unlock()
+	if !projectionValid(st, current, key) {
+		return stripped
+	}
+	n := st.Projection.CoveredCount
+	if n <= 0 || n > len(current) {
+		return stripped
+	}
+	if projectionValid(st, stripped, key) {
+		return stripped
+	}
+	out := append([]provider.Message(nil), current[:n]...)
+	covered := make(map[string]bool, n)
+	for _, message := range current[:n] {
+		if message.ID != "" {
+			covered[message.ID] = true
+		}
+	}
+	for _, message := range stripped {
+		if message.ID != "" && covered[message.ID] {
+			continue
+		}
+		out = append(out, message)
+	}
+	if !projectionValid(st, out, key) {
+		return stripped
+	}
+	return out
+}
+
 // InvalidateProjectionIfStale keeps the projection when it still matches the
 // current transcript and performs the full invalidation otherwise. History
 // rewrites that only touch messages past CoveredCount keep their fold.

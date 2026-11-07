@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -535,5 +536,125 @@ func TestTerminationCommitRetainsUnresolvedSideEffectOnce(t *testing.T) {
 	}
 	if id := findRecord(c.sessionEventStore().Snapshot().Projection.Messages); id != durableID {
 		t.Fatalf("autosave changed retained identity %q", id)
+	}
+}
+
+func TestPreservedModelContextKeepsFold(t *testing.T) {
+	system := provider.Message{ID: "system", Role: provider.RoleSystem, Content: "system"}
+	oldUser := provider.Message{ID: "old-user", Role: provider.RoleUser, Content: "old real question"}
+	oldAnswer := provider.Message{ID: "old-answer", Role: provider.RoleAssistant, Content: "old real answer"}
+	partial := provider.Message{ID: "partial", Role: provider.RoleAssistant, Content: "unfinished"}
+	summary := provider.Message{ID: "summary", Role: provider.RoleUser, Content: "<compaction-summary>\nearlier work\n</compaction-summary>"}
+	before := []provider.Message{system, oldUser, oldAnswer, partial}
+	after := before[:3]
+	current := []provider.Message{system, summary, partial}
+	recorded := map[string]bool{"system": true, "old-user": true, "old-answer": true, "partial": true}
+	got := preservedModelContext(current, before, after, recorded)
+	var ids []string
+	for _, message := range got {
+		ids = append(ids, message.ID)
+	}
+	if !reflect.DeepEqual(ids, []string{"system", "summary"}) {
+		t.Fatalf("folded model context = %v", ids)
+	}
+}
+
+func TestPreservedModelContextKeepsPrunedBytes(t *testing.T) {
+	full := provider.Message{ID: "tool", Role: provider.RoleTool, ToolCallID: "call", Name: "read", Content: "FULL RESULT"}
+	pruned := full
+	pruned.Content = "short"
+	got := preservedModelContext([]provider.Message{pruned}, []provider.Message{full}, []provider.Message{full}, map[string]bool{"tool": true})
+	if len(got) != 1 || got[0].Content != "short" {
+		t.Fatalf("prune restored canonical bytes: %+v", got)
+	}
+}
+
+func TestPreservedModelContextMatchesCanonicalCut(t *testing.T) {
+	system := provider.Message{ID: "system", Role: provider.RoleSystem, Content: "system"}
+	user := provider.Message{ID: "user", Role: provider.RoleUser, Content: "question"}
+	partial := provider.Message{ID: "partial", Role: provider.RoleAssistant, Content: "unfinished"}
+	before := []provider.Message{system, user, partial}
+	after := before[:2]
+	recorded := map[string]bool{"system": true, "user": true, "partial": true}
+	got := preservedModelContext(provider.ModelMessages(before), before, after, recorded)
+	want := provider.ModelMessages(after)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("canonical cut\ngot=%+v\nwant=%+v", got, want)
+	}
+}
+
+func TestTerminationCommitKeepsFoldedModelContext(t *testing.T) {
+	done := make(chan event.Event, 8)
+	c, _, _ := exclusiveTestController(t, event.FuncSink(func(e event.Event) {
+		if e.Kind == event.TurnDone {
+			done <- e
+		}
+	}))
+	canonical := []provider.Message{
+		{ID: "prefix-system", Role: provider.RoleSystem, Content: "system"},
+		{ID: "old-user", Role: provider.RoleUser, Content: "old real question"},
+		{ID: "old-answer", Role: provider.RoleAssistant, Content: "old real answer"},
+	}
+	if err := c.RecordSessionMessages(t.Context(), "old-history", canonical); err != nil {
+		t.Fatal(err)
+	}
+	c.restoreExecutorFromSessionEvents()
+	summary := provider.Message{ID: "summary", Role: provider.RoleUser, Content: "<compaction-summary>\nearlier work\n</compaction-summary>"}
+	folded := []provider.Message{canonical[0], summary}
+	beforeFold := len(c.executor.Session().Snapshot())
+	result, err := c.RecordSessionModelContext(t.Context(), agent.SessionModelContextCommit{
+		OperationID: "fold-old-history",
+		Reason:      "summary",
+		Messages:    folded,
+	})
+	if err != nil || !result.Durable {
+		t.Fatalf("record fold: %+v err=%v", result, err)
+	}
+	if got := len(c.executor.Session().Snapshot()); got != beforeFold || got <= len(folded) {
+		t.Fatalf("fold record changed the executor: before=%d after=%d folded=%d", beforeFold, got, len(folded))
+	}
+	started := make(chan struct{})
+	c.runGuarded(func(ctx context.Context) error {
+		start := c.executor.Session().Len()
+		input := provider.Message{ID: "synthetic-input", Role: provider.RoleUser, Content: "internal generated task"}
+		c.noteTerminationBoundary(input, false)
+		current := []provider.Message{input, {ID: "synthetic-answer", Role: provider.RoleAssistant, Content: "unfinished generated answer"}}
+		for _, message := range current {
+			c.executor.Session().Add(message)
+		}
+		if err := c.RecordSessionMessages(ctx, "synthetic-before-cleanup", current); err != nil {
+			return err
+		}
+		close(started)
+		<-ctx.Done()
+		c.stripInterruptedSyntheticTurnMessagesAfter(start)
+		return ctx.Err()
+	})
+	awaitPromptLedgerTest(t, started, "folded synthetic turn")
+	c.CancelSession()
+	waitTurnDoneEvent(t, done)
+	waitIdleAdmission(t, c)
+	projection := c.sessionEventStore().Snapshot().Projection
+	summaryKept := false
+	for _, message := range projection.ModelMessages {
+		switch message.ID {
+		case "summary":
+			summaryKept = true
+		case "old-user", "old-answer", "synthetic-input", "synthetic-answer":
+			t.Fatalf("folded model context regained %s", message.ID)
+		}
+	}
+	if !summaryKept {
+		t.Fatal("compaction summary was removed from model context")
+	}
+	retained := map[string]bool{}
+	for _, message := range projection.Messages {
+		retained[message.ID] = true
+		if message.ID == "synthetic-input" || message.ID == "synthetic-answer" {
+			t.Fatalf("synthetic record survived in history: %s", message.ID)
+		}
+	}
+	if !retained["old-user"] || !retained["old-answer"] {
+		t.Fatalf("history lost the folded prefix: %+v", retained)
 	}
 }

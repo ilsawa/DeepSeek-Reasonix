@@ -147,6 +147,95 @@ func buildTerminationPlan(before, after []provider.Message) (*TerminationPlan, e
 	return p, nil
 }
 
+// preservedModelContext is the provider view published after an interrupt.
+// It starts from the model view already committed — a fold, a prune, or the
+// ordinary transcript — and drops only messages this cleanup removed. Older
+// canonical messages that a fold left out are not copied back. A compaction
+// summary stays even when its id was inside the cut. recordedUI holds ids
+// already stored in the durable transcript; an id that is in the executor but
+// missing there is an unrecorded tail and is kept.
+func preservedModelContext(current, before, after []provider.Message, recordedUI map[string]bool) []provider.Message {
+	if len(current) == 0 {
+		return nil
+	}
+	kept := make(map[string]bool, len(after))
+	for _, message := range after {
+		if message.ID != "" {
+			kept[message.ID] = true
+		}
+	}
+	removed := make(map[string]bool, len(before))
+	beforeByID := make(map[string]provider.Message, len(before))
+	for _, message := range before {
+		if message.ID == "" {
+			continue
+		}
+		beforeByID[message.ID] = message
+		if !kept[message.ID] {
+			removed[message.ID] = true
+		}
+	}
+	afterByID := make(map[string]provider.Message, len(after))
+	for _, message := range after {
+		if message.ID != "" {
+			afterByID[message.ID] = message
+		}
+	}
+	seen := make(map[string]bool, len(current))
+	next := make([]provider.Message, 0, len(current))
+	for _, message := range current {
+		if message.ID != "" && removed[message.ID] && !agent.IsCompactionSummary(message) {
+			continue
+		}
+		if previous, ok := beforeByID[message.ID]; ok && modelBytesEqual(message, previous) {
+			if updated, ok := afterByID[message.ID]; ok {
+				message = updated
+			}
+		}
+		next = append(next, message)
+		if message.ID != "" {
+			seen[message.ID] = true
+		}
+	}
+	for _, message := range after {
+		if message.ID == "" || seen[message.ID] {
+			continue
+		}
+		if _, existed := beforeByID[message.ID]; existed && (len(recordedUI) == 0 || recordedUI[message.ID]) {
+			continue
+		}
+		next = append(next, message)
+		seen[message.ID] = true
+	}
+	model := provider.ModelMessages(next)
+	if model == nil {
+		model = []provider.Message{}
+	}
+	return model
+}
+
+func modelBytesEqual(left, right provider.Message) bool {
+	return reflect.DeepEqual(provider.ModelMessages([]provider.Message{left}), provider.ModelMessages([]provider.Message{right}))
+}
+
+func rewriteInterruptedModelContext(p *TerminationPlan, messages []provider.Message) error {
+	if p == nil || messages == nil {
+		return nil
+	}
+	payload, err := json.Marshal(map[string]any{"messages": messages, "reason": "interrupted-turn-cleanup"})
+	if err != nil {
+		return err
+	}
+	for i := range p.Events {
+		if p.Events[i].Kind == "model/context-replace" {
+			p.Events[i].Payload = payload
+			return nil
+		}
+	}
+	p.Events = append(p.Events, session.Event{Kind: "model/context-replace", Payload: payload})
+	return nil
+}
+
 func (c *Controller) replaceSessionAfterCancelFrom(before, after []provider.Message) {
 	c.replaceSessionAfterCancelFromScoped(before, after, false)
 }
@@ -204,10 +293,16 @@ func (c *Controller) replaceSessionAfterCancelFromScoped(before, after []provide
 		c.failTermination(err)
 		return
 	}
+	// The plan's message list is the executor transcript. A live projection
+	// hashes a covered prefix of that transcript; shortening the prefix makes
+	// the next request fall back to the whole canonical log.
+	if c.executor != nil {
+		p.Messages = c.executor.RetainCoveredCanonical(before, p.Messages)
+	}
 	c.snapshotMu.Lock()
 	store := c.sessionEventStore()
 	if store == nil {
-		c.replaceLegacySessionAfterCancelLocked(after)
+		c.replaceLegacySessionAfterCancelLocked(p.Messages)
 		c.snapshotMu.Unlock()
 		return
 	}
@@ -226,15 +321,36 @@ func (c *Controller) replaceSessionAfterCancelFromScoped(before, after []provide
 		c.snapshotMu.Unlock()
 		return
 	}
+	executed := store.ExecutionSnapshot().Projection
+	recordedUI := map[string]bool{}
+	for _, message := range store.Snapshot().Projection.Messages {
+		if message.ID != "" {
+			recordedUI[message.ID] = true
+		}
+	}
+	if len(executed.ModelMessages) > 0 {
+		if err := rewriteInterruptedModelContext(p, preservedModelContext(executed.ModelMessages, before, after, recordedUI)); err != nil {
+			c.turnEvents.commitMu.Unlock()
+			c.snapshotMu.Unlock()
+			c.failTermination(err)
+			return
+		}
+	}
 	if p.TurnID != "" && projection.TurnID == p.TurnID {
 		if retractTurn {
 			c.retractMissingTurnMessagesLocked(p)
 		}
 		// Compatibility runners may update the executor before their recorder
 		// commits. Preserve these unchanged messages explicitly as well.
+		// Messages already in the durable transcript were folded out of the
+		// model view on purpose; upserting them would copy the canonical log
+		// back onto the fold before the context replacement.
 		known := map[string]bool{}
-		for _, m := range store.ExecutionSnapshot().Projection.ModelMessages {
+		for _, m := range executed.ModelMessages {
 			known[m.ID] = true
+		}
+		for id := range recordedUI {
+			known[id] = true
 		}
 		var unrecorded []session.Event
 		for _, m := range before {
