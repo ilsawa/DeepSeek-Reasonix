@@ -161,7 +161,7 @@ func applyDirectMCPProviderToolSurface(reg *tool.Registry) {
 		seen[name] = true
 		allow = append(allow, name)
 	}
-	for _, name := range []string{"bash", "pwsh", "read_file", "edit_file", "write_file", "send_message"} {
+	for _, name := range []string{"bash", "pwsh", "read_file", "view_image", "edit_file", "write_file", "send_message"} {
 		add(name)
 	}
 	for _, name := range reg.Names() {
