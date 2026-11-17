@@ -152,6 +152,17 @@ func (m *chatTUI) ingestToolProgress(e event.Event) {
 }
 
 func (m *chatTUI) ingestToolResult(e event.Event) {
+	// An agent reply is the same yellow sender line as a person's letter.
+	// It stays in this turn: the model already has the text, and it is not a
+	// new incoming letter that waits for the operator.
+	if sender, body, ok := agentReplyFromTool(e.Tool); ok {
+		m.finalizeStreamed()
+		m.commitSpacer()
+		m.commitTranscriptSource(transcriptSource{
+			kind: transcriptSourceIncoming, raw: body, aux: sender,
+		})
+		return
+	}
 	// A successful result is silent (it only feeds the model); a blocked/failed
 	// call surfaces a red card. Pass the final output so collapseToolOutput has
 	// a last-resort line count when live state was already reset.

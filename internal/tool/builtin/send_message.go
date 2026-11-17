@@ -160,13 +160,17 @@ func (sendMessage) Description() string {
 		"to=grok delivers directly to Grok and does not enter the agent chat. " +
 		"to=chat delivers to the agent chat. " +
 		"Another call sign delivers directly to that agent's socket when it is listening. " +
-		"The tool writes the call sign Зерде itself; do not put a call sign in text. " +
+		"to=agent:Name continues a dialogue with that LocalAI agent. to=agent-new:Name starts that dialogue over. " +
+		"The tool keeps the thread and sends it with the new line, so the agent sees the conversation. " +
+		"Names: Arthur, Percival, Gawain, Kay, Lancelot, Bedivere, Bors. " +
+		"An agent answer is returned as Name: text and is drawn on screen as a yellow line with the sender. It is the agent's reply, not a person's letter, and the dialogue continues. " +
+		"The tool writes the call sign Зерде itself on letters to people; do not put a call sign in text. " +
 		"The letter is not the operator's own words. Show Sawa the same result on screen. " +
-		"Returns ушло grok, ушло в чат, ушло <name>, or некому принять."
+		"People return ушло grok, ушло в чат, ушло <name>, or некому принять."
 }
 
 func (sendMessage) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Recipient. grok is direct, outside the chat. chat is the agent chat. Any other call sign is a direct socket."},"text":{"type":"string","description":"Letter body without a call sign."}},"required":["to","text"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Recipient. grok is direct, outside the chat. chat is the agent chat. Any other call sign is a direct socket. agent:Name continues a LocalAI agent dialogue (Arthur, Percival, Gawain, Kay, Lancelot, Bedivere, Bors). agent-new:Name starts that dialogue over."},"text":{"type":"string","description":"Letter body without a call sign. For an agent this is the new line of the dialogue."}},"required":["to","text"],"additionalProperties":false}`)
 }
 
 func (sendMessage) ReadOnly() bool { return false }
@@ -191,6 +195,9 @@ func (sendMessage) Execute(ctx context.Context, args json.RawMessage) (string, e
 	}
 	if len(body) > sendMessageMaxBytes {
 		return "", errors.New("text is too long")
+	}
+	if name, fresh, isAgent := parseAgentDest(to); isAgent {
+		return talkToAgent(ctx, name, fresh, body)
 	}
 	var path string
 	var went string
