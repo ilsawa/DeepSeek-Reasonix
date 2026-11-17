@@ -36,7 +36,7 @@ func TestSamplingOverflowPreservesSummaryBudgetFailure(t *testing.T) {
 		p := &overflowThenSlowSummary{}
 		sess := foldableSessionOverForce(6)
 		before := sess.Snapshot()
-		a := New(p, nil, sess, Options{ContextWindow: 32000, TaskBudget: TaskBudget{Wall: 10 * time.Minute}}, event.Discard)
+		a := New(p, nil, sess, Options{ContextWindow: 32000, TaskBudget: TaskBudget{Wall: compactionBudget + time.Minute}}, event.Discard)
 		started := time.Now()
 		result := a.streamWithSamplingRecovery(t.Context(), 1)
 		var summary *SummaryError
@@ -146,7 +146,7 @@ func TestNestedCompactionRunKeepsOriginalBudget(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		a := New(nil, nil, NewSession("sys"), Options{}, event.Discard)
 		ctx, finish := a.beginCompactionRun(context.Background())
-		time.Sleep(4 * time.Minute)
+		time.Sleep(compactionBudget - time.Minute)
 		nested, end := a.beginCompactionRun(ctx)
 		deadline, _ := nested.Deadline()
 		if time.Until(deadline) != time.Minute || currentCompactionRun(ctx) != currentCompactionRun(nested) {
@@ -181,17 +181,17 @@ func TestLargeOverflowContinuesAfterAttemptTimeout(t *testing.T) {
 		a := New(p, nil, foldableSessionOverForce(40), Options{ContextWindow: 4000}, event.Discard)
 		started := time.Now()
 		_, err := a.contextManager().Prepare(t.Context(), ContextPreparePolicy{Trigger: CompactionTriggerPressure})
-		if errors.Is(err, errSummaryBudget) {
-			t.Fatalf("rescue died on the shared budget after %s: %v", time.Since(started), err)
+		if p.calls != 1 {
+			t.Fatalf("calls=%d, want one summarizer call", p.calls)
 		}
-		if p.calls < 2 {
-			t.Fatalf("calls=%d, want another pass after the attempt deadline", p.calls)
+		if a.currentProjectionVersion() != 0 {
+			t.Fatal("timed-out call installed a fold")
 		}
-		if time.Since(started) < summaryAttemptBudget {
-			t.Fatalf("elapsed %s, the attempt deadline did not bind", time.Since(started))
+		if time.Since(started) != compactionBudget {
+			t.Fatalf("elapsed %s, want the one-call budget", time.Since(started))
 		}
-		if a.currentProjectionVersion() == 0 {
-			t.Fatal("no fold kept after the timed-out pass")
+		if err == nil {
+			t.Fatal("pressure over the ceiling continued with the unreduced view")
 		}
 	})
 }

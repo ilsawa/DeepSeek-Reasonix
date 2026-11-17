@@ -22,7 +22,7 @@ func (p *timedExtractProvider) Stream(ctx context.Context, req provider.Request)
 	p.started++
 	delay := 40 * time.Second
 	if p.started == 1 {
-		delay = 4 * time.Minute
+		delay = compactionBudget - time.Minute
 	}
 	select {
 	case <-ctx.Done():

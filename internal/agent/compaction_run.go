@@ -7,17 +7,19 @@ import (
 	"time"
 )
 
-const compactionBudget = 5 * time.Minute
+// compactionBudget is one summarizer call. The local model answers a
+// full-window prefix in about five minutes, and a shorter run deadline
+// cancels that answer as it arrives. One kept call replaces the view.
+// Another pass is not started from the same transcript.
+const compactionBudget = 12 * time.Minute
 
-// summaryAttemptBudget is one summarizer call. A full-window prefix on the
-// local model takes about three minutes, so the attempt deadline sits above
-// that and a finished call is kept. The ordinary five-minute run is unchanged.
+// summaryAttemptBudget remains the per-call cap on a rescue that is already
+// several times past the hard ceiling. Pressure no longer uses that ladder.
 const summaryAttemptBudget = 4 * time.Minute
 
-// maxRecoverySummaries caps a rescue that starts at least twice past the hard
-// ceiling. Four passes cannot walk that transcript back under the window, and
-// those passes used to share one five-minute budget, so the second call was
-// cancelled before the model answered.
+// maxRecoverySummaries caps a manual or overflow rescue that starts at least
+// twice past the hard ceiling. Pressure is one call: a ladder of cancelled
+// passes does not shrink the window.
 const maxRecoverySummaries = 8
 
 // SummaryError keeps the failure identity without changing the wire contract.
@@ -81,24 +83,11 @@ func currentCompactionRun(ctx context.Context) *compactionRun {
 	return run
 }
 
-// compactionRunBudget is five minutes until the view is at least twice the
-// hard ceiling. Past that, each rescue pass gets its own attempt deadline.
-// A modest overflow keeps the short budget the tests and ordinary retries use.
+// compactionRunBudget is one summarizer call. A view several times past the
+// ceiling used to stretch this by the pass count. Those extra passes were
+// cancelled before the local model answered, so the run stays one call.
 func (a *Agent) compactionRunBudget() time.Duration {
-	if a == nil || a.sess.conversation == nil {
-		return compactionBudget
-	}
-	est := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
-	hard := a.hardInputCeiling()
-	if hard <= 0 || est < hard*2 {
-		return compactionBudget
-	}
-	passes := summariesFor(ContextPreparePolicy{Trigger: CompactionTriggerPressure}, est, hard)
-	budget := time.Duration(passes) * summaryAttemptBudget
-	if budget < compactionBudget {
-		return compactionBudget
-	}
-	return budget
+	return compactionBudget
 }
 
 // Every nested summary, replan, and chunk inherits the same deadline. The

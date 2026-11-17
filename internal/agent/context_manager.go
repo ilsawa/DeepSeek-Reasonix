@@ -188,20 +188,18 @@ func shouldPruneBeforeFold(trigger string, overHardCeiling bool) bool {
 	}
 }
 
-// manualRecoverySummaries bounds a compact that starts just over the hard
-// input ceiling. Manual /compact, overflow recovery, and pressure share it.
-// A view at least twice past the ceiling uses summariesFor, up to
-// maxRecoverySummaries, because one largest-prefix fold cannot close that gap.
+// manualRecoverySummaries bounds a manual or overflow compact that starts
+// just over the hard input ceiling. Pressure is one call. A view at least
+// twice past the ceiling uses summariesFor, up to maxRecoverySummaries.
 const manualRecoverySummaries = 4
 
 func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
 	switch {
-	case overCeiling && (policy.Trigger == CompactionTriggerManual ||
-		policy.Trigger == CompactionTriggerOverflow ||
-		policy.Trigger == CompactionTriggerPressure):
-		return manualRecoverySummaries
 	case policy.Trigger == CompactionTriggerPressure:
-		return 2
+		return 1
+	case overCeiling && (policy.Trigger == CompactionTriggerManual ||
+		policy.Trigger == CompactionTriggerOverflow):
+		return manualRecoverySummaries
 	default:
 		return 1
 	}
@@ -213,7 +211,7 @@ func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
 func summariesFor(policy ContextPreparePolicy, est, hard int) int {
 	over := hard <= 0 || est >= hard
 	base := maxSummariesFor(policy, over)
-	if hard <= 0 || est < hard*2 {
+	if policy.Trigger == CompactionTriggerPressure || hard <= 0 || est < hard*2 {
 		return base
 	}
 	switch policy.Trigger {
@@ -251,12 +249,8 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 			if ctxErr := ctx.Err(); ctxErr != nil && !errors.Is(context.Cause(ctx), errSummaryBudget) {
 				return PreparedContext{}, ctxErr
 			}
-			// One call missed its own deadline. Keep the folds already committed
-			// and start the next pass while the rescue run is still open.
-			if errors.Is(err, errSummaryAttempt) && ctx.Err() == nil {
-				result = m.currentPrepared()
-				continue
-			}
+			// A missed deadline did not install a summary. Starting the same
+			// transcript again only repeats the wait.
 			if ladder.absorbOverflow(err) {
 				// Summary feedback may have learned both the physical window and
 				// a denser tokenizer. Re-plan against those measurements.
