@@ -42,11 +42,12 @@ import (
 // defaultStreamIdleTimeout caps how long a started SSE stream may go without any
 // bytes before it's treated as a dropped connection. A half-open TCP connection
 // (e.g. a proxy switched mid-stream) sends no RST, so scanner.Scan() would block
-// forever; this turns that hang into a recoverable error. Generous on purpose —
-// live streams emit tokens/keepalives far more often. Stored per-client
+// forever; this turns that hang into a recoverable error. A local model on a
+// large prompt can stay silent for several minutes before the first byte, so
+// five minutes cuts the answer as it starts. Stored per-client
 // (client.idleTimeout) so a test can shorten it without a shared global that
 // would race other streams' watchdogs.
-const defaultStreamIdleTimeout = 300 * time.Second
+const defaultStreamIdleTimeout = 15 * time.Minute
 
 // maxPrefixContinuations keeps automatic recovery bounded. A second length
 // finish is surfaced through the existing truncation notice instead of opening
@@ -274,7 +275,7 @@ func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 		DialTimeout:           30 * time.Second,
 		KeepAlive:             30 * time.Second,
 		TLSHandshakeTimeout:   15 * time.Second,
-		ResponseHeaderTimeout: 300 * time.Second, // unified provider response-header idle guard
+		ResponseHeaderTimeout: defaultStreamIdleTimeout, // same window as the stream silence watchdog
 	})
 	if err != nil {
 		return nil, err

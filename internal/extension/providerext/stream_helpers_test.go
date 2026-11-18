@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-func TestDefaultStreamIdleTimeoutIsFiveMinutes(t *testing.T) {
-	if defaultStreamIdleTimeout != 300*time.Second {
-		t.Fatalf("default stream idle timeout = %s, want 5m", defaultStreamIdleTimeout)
+func TestDefaultStreamIdleTimeout(t *testing.T) {
+	if defaultStreamIdleTimeout != 15*time.Minute {
+		t.Fatalf("default stream idle timeout = %s, want 15m", defaultStreamIdleTimeout)
 	}
 }
 

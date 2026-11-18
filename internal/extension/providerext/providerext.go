@@ -116,7 +116,7 @@ var (
 // catalogFetchTimeout bounds one sidecar's extension/provider/catalog call,
 // mirroring the broker host's catalog budget.
 const catalogFetchTimeout = 10 * time.Second
-const defaultStreamIdleTimeout = 300 * time.Second
+const defaultStreamIdleTimeout = 15 * time.Minute
 
 // New builds the merged resolver. clients supplies the live sidecar
 // connections (typically the sidecar Manager's client list); claims is the

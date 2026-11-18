@@ -38,10 +38,11 @@ import (
 
 // defaultStreamIdleTimeout caps how long a started SSE stream may go silent before
 // it's treated as a dropped connection — a half-open TCP connection (proxy switched
-// mid-stream) sends no RST, so scanner.Scan() would block forever. Generous on
-// purpose; live streams emit far more often. Stored per-client (client.idleTimeout)
-// so a test can shorten it without a shared global that races other watchdogs.
-const defaultStreamIdleTimeout = 300 * time.Second
+// mid-stream) sends no RST, so scanner.Scan() would block forever. A local model
+// on a large prompt can stay silent for several minutes before the first byte.
+// Stored per-client (client.idleTimeout) so a test can shorten it without a
+// shared global that races other watchdogs.
+const defaultStreamIdleTimeout = 15 * time.Minute
 
 const (
 	// anthropicVersion is the required API version header value.
@@ -171,7 +172,7 @@ func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 		DialTimeout:           30 * time.Second,
 		KeepAlive:             30 * time.Second,
 		TLSHandshakeTimeout:   15 * time.Second,
-		ResponseHeaderTimeout: 300 * time.Second,
+		ResponseHeaderTimeout: defaultStreamIdleTimeout,
 	})
 	if err != nil {
 		return nil, err
